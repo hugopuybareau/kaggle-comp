@@ -1,1 +1,4 @@
 .venv
+.env
+BE_CS1.ipynb
+data/
