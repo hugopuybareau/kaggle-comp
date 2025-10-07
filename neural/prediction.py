@@ -39,5 +39,3 @@ print(f"✓ Caractéristiques de séquence: 6")
 print(f"✓ Total des caractéristiques: {X_combined.shape[1]}")
 print(f"✓ Modèle entraîné avec {model.n_iter_} itérations")
 print(f"✓ Précision finale: {accuracy:.4f}")
-
-

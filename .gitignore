@@ -2,3 +2,4 @@
 .env
 BE_CS1.ipynb
 data/
+__pycache__/
