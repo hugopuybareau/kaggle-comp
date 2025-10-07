@@ -260,12 +260,26 @@ class NeuralFeatureExtractor:
         """
         print("=== ÉVALUATION DU MODÈLE ===")
         
+        from sklearn.metrics import f1_score, classification_report
+        
         y_pred = self.mlp.predict(X_test)
         y_pred_proba = self.mlp.predict_proba(X_test)
         
         # Précision globale
         accuracy = self.mlp.score(X_test, y_test)
+        
+        # F1-score (macro et weighted pour classes déséquilibrées)
+        f1_macro = f1_score(y_test, y_pred, average='macro')
+        f1_weighted = f1_score(y_test, y_pred, average='weighted')
+        f1_micro = f1_score(y_test, y_pred, average='micro')
+        
         print(f"Précision globale: {accuracy:.4f}")
+        print(f"F1-score macro: {f1_macro:.4f}")
+        print(f"F1-score weighted: {f1_weighted:.4f}")
+        print(f"F1-score micro: {f1_micro:.4f}")
+        
+        # Stocker le F1-score pour utilisation ultérieure
+        self.f1 = f1_weighted  # ou f1_macro selon votre préférence
         
         # Top-k accuracy
         def top_k_accuracy(y_true, y_pred_proba, k=5):
@@ -280,8 +294,12 @@ class NeuralFeatureExtractor:
             acc_k = top_k_accuracy(y_test, y_pred_proba, k)
             print(f"Top-{k} accuracy: {acc_k:.4f}")
         
-        return y_pred, y_pred_proba, accuracy
-    
+        # Afficher un rapport de classification détaillé
+        print("\n=== RAPPORT DE CLASSIFICATION ===")
+        print(classification_report(y_test, y_pred, digits=4, zero_division=0))
+        
+        return y_pred, y_pred_proba, f1_weighted
+
     def plot_results(self, y_test, y_pred, y_pred_proba, basic_features):
         """
         Visualise les résultats du modèle
