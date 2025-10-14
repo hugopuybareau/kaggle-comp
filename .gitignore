@@ -1,5 +1,6 @@
 .venv
 <<<<<<< HEAD
+<<<<<<< HEAD
 .env
 BE_CS1.ipynb
 data/
@@ -9,3 +10,9 @@ __pycache__/
 
 data/
 >>>>>>> e3661e1fd5730231211ca8c6582f8943b4021acc
+=======
+.env
+BE_CS1.ipynb
+data/
+__pycache__/
+>>>>>>> 95f403888bc97e98fa49f768357eeb37934945b0

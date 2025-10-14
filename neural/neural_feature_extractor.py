@@ -44,6 +44,259 @@ class NeuralFeatureExtractor:
         
         return actions_df, browser_encoded
     
+    def filter_users_by_sessions(self, df, min_sessions=8, max_users=100):
+        """
+        Filtre les utilisateurs selon le nombre de sessions pour équilibrer le dataset
+        """
+        print("=== FILTRAGE DES UTILISATEURS ===")
+        
+        user_counts = df['util'].value_counts()
+        print(f"Utilisateurs avant filtrage: {len(user_counts)}")
+        print(f"Sessions avant filtrage: {len(df)}")
+        
+        # Garder seulement les utilisateurs avec assez de sessions
+        valid_users = user_counts[user_counts >= min_sessions].head(max_users)
+        filtered_df = df[df['util'].isin(valid_users.index)].copy()
+        
+        print(f"Utilisateurs après filtrage: {len(valid_users)}")
+        print(f"Sessions après filtrage: {len(filtered_df)}")
+        print(f"Moyenne sessions/utilisateur: {len(filtered_df)/len(valid_users):.1f}")
+        
+        return filtered_df
+
+    def extract_enhanced_features(self, actions_df, browser_encoded):
+        """
+        Version améliorée avec plus de caractéristiques basées sur votre analyse
+        """
+        features_list = []
+        
+        print("Extraction des caractéristiques améliorées...")
+        
+        for idx, row in actions_df.iterrows():
+            # Filtrer les actions non-nulles
+            valid_actions = [str(action) for action in row if pd.notna(action)]
+            
+            # === CARACTÉRISTIQUES DE BASE ===
+            session_length = len(valid_actions)
+            
+            # === CARACTÉRISTIQUES TEMPORELLES ===
+            temporal_markers = [action for action in valid_actions if action.startswith('t')]
+            num_temporal = len(temporal_markers)
+            time_ratio = num_temporal / max(session_length, 1)
+            
+            # Analyser les pauses (intervalles entre marqueurs temporels)
+            if temporal_markers:
+                # Extraire les numéros des marqueurs temporels
+                time_numbers = []
+                for marker in temporal_markers:
+                    try:
+                        num = int(marker[1:])  # enlever le 't'
+                        time_numbers.append(num)
+                    except:
+                        pass
+                
+                if time_numbers:
+                    avg_pause = np.mean(time_numbers)
+                    max_pause = max(time_numbers)
+                    pause_variance = np.var(time_numbers) if len(time_numbers) > 1 else 0
+                else:
+                    avg_pause = max_pause = pause_variance = 0
+            else:
+                avg_pause = max_pause = pause_variance = 0
+            
+            # === CARACTÉRISTIQUES D'ACTIONS ===
+            non_temporal_actions = [action for action in valid_actions if not action.startswith('t')]
+            action_counts = Counter(non_temporal_actions)
+            unique_actions = len(action_counts)
+            
+            # Actions les plus fréquentes
+            if action_counts:
+                most_common = action_counts.most_common(5)
+                top_action_freq = most_common[0][1]
+                action_diversity = unique_actions / max(len(non_temporal_actions), 1)
+                
+                # Fréquences relatives des top actions
+                top_1_ratio = most_common[0][1] / max(len(non_temporal_actions), 1)
+                top_2_ratio = most_common[1][1] / max(len(non_temporal_actions), 1) if len(most_common) > 1 else 0
+                top_3_ratio = most_common[2][1] / max(len(non_temporal_actions), 1) if len(most_common) > 2 else 0
+            else:
+                top_action_freq = action_diversity = 0
+                top_1_ratio = top_2_ratio = top_3_ratio = 0
+            
+            # === PATTERNS D'UTILISATION ===
+            # Analyser les types d'actions dominants
+            button_actions = sum(1 for action in non_temporal_actions if 'bouton' in action.lower())
+            input_actions = sum(1 for action in non_temporal_actions if 'saisie' in action.lower())
+            dialog_actions = sum(1 for action in non_temporal_actions if 'dialogue' in action.lower())
+            navigation_actions = sum(1 for action in non_temporal_actions if any(word in action.lower() 
+                                                                            for word in ['onglet', 'menu', 'navigation']))
+            
+            total_non_temporal = max(len(non_temporal_actions), 1)
+            button_ratio = button_actions / total_non_temporal
+            input_ratio = input_actions / total_non_temporal
+            dialog_ratio = dialog_actions / total_non_temporal
+            navigation_ratio = navigation_actions / total_non_temporal
+            
+            # === CARACTÉRISTIQUES DE SÉQUENCE ===
+            # Premier et dernier actions
+            first_action = str(valid_actions[0]) if valid_actions else 'EMPTY'
+            last_action = str(valid_actions[-1]) if valid_actions else 'EMPTY'
+            
+            # Transitions entre actions
+            transitions = []
+            for i in range(len(valid_actions) - 1):
+                if not valid_actions[i].startswith('t') and not valid_actions[i+1].startswith('t'):
+                    transitions.append(f"{valid_actions[i]}->{valid_actions[i+1]}")
+            
+            unique_transitions = len(set(transitions))
+            transition_diversity = unique_transitions / max(len(transitions), 1)
+            
+            # === CARACTÉRISTIQUES AVANCÉES ===
+            # Complexité de session (entropie des actions)
+            if action_counts:
+                probabilities = np.array(list(action_counts.values())) / sum(action_counts.values())
+                entropy = -np.sum(probabilities * np.log2(probabilities + 1e-10))
+            else:
+                entropy = 0
+            
+            # Ratio d'actions répétées
+            repeated_actions = sum(1 for count in action_counts.values() if count > 1)
+            repetition_ratio = repeated_actions / max(unique_actions, 1)
+            
+            features = {
+                # Base
+                'session_length': session_length,
+                'unique_actions': unique_actions,
+                'browser': browser_encoded[idx],
+                
+                # Temporel
+                'temporal_markers': num_temporal,
+                'time_ratio': time_ratio,
+                'avg_pause': avg_pause,
+                'max_pause': max_pause,
+                'pause_variance': pause_variance,
+                
+                # Actions
+                'top_action_frequency': top_action_freq,
+                'action_diversity': action_diversity,
+                'top_1_ratio': top_1_ratio,
+                'top_2_ratio': top_2_ratio,
+                'top_3_ratio': top_3_ratio,
+                
+                # Patterns
+                'button_ratio': button_ratio,
+                'input_ratio': input_ratio,
+                'dialog_ratio': dialog_ratio,
+                'navigation_ratio': navigation_ratio,
+                
+                # Séquence
+                'first_action_hash': hash(first_action) % 1000,
+                'last_action_hash': hash(last_action) % 1000,
+                'unique_transitions': unique_transitions,
+                'transition_diversity': transition_diversity,
+                
+                # Avancées
+                'entropy': entropy,
+                'repetition_ratio': repetition_ratio
+            }
+            
+            features_list.append(features)
+            
+            if (idx + 1) % 500 == 0:
+                print(f"Traité {idx + 1} sessions...")
+        
+        return pd.DataFrame(features_list)
+
+    # Modifiez également la méthode fit_transform
+    def fit_transform(self, df):
+        """
+        Version améliorée avec filtrage des utilisateurs
+        """
+        print("=== EXTRACTION COMPLÈTE DES CARACTÉRISTIQUES (VERSION AMÉLIORÉE) ===")
+        
+        # ÉTAPE 1: Filtrer les utilisateurs pour équilibrer le dataset
+        df_filtered = self.filter_users_by_sessions(df, min_sessions=8, max_users=80)
+        
+        # ÉTAPE 2: Préparer les données
+        actions_df, browser_encoded = self.prepare_data(df_filtered)
+        
+        # ÉTAPE 3: Extraire les caractéristiques améliorées
+        basic_features = self.extract_enhanced_features(actions_df, browser_encoded)
+        
+        # ÉTAPE 4: Créer le vocabulaire et extraire les séquences
+        self.create_action_vocabulary(actions_df)
+        sequence_features = self.extract_sequence_features(actions_df)
+        
+        # ÉTAPE 5: Convertir les séquences en statistiques
+        sequence_stats = self.sequence_to_stats(sequence_features)
+        
+        # ÉTAPE 6: Normaliser les caractéristiques basiques
+        basic_features_scaled = self.scaler.fit_transform(basic_features)
+        
+        # ÉTAPE 7: Combiner toutes les caractéristiques
+        X_combined = np.hstack([basic_features_scaled, sequence_stats])
+        
+        # ÉTAPE 8: Encoder la variable cible
+        y_encoded = self.le_target.fit_transform(df_filtered['util'])
+        
+        print(f"Dataset final:")
+        print(f"  - Utilisateurs: {len(np.unique(y_encoded))}")
+        print(f"  - Sessions: {len(df_filtered)}")
+        print(f"  - Caractéristiques: {X_combined.shape[1]}")
+        
+        return X_combined, y_encoded, basic_features
+
+    # Ajoutez aussi une méthode pour optimiser l'architecture du réseau
+    def train_optimized_neural_network(self, X_train, y_train):
+        """
+        Réseau de neurones optimisé pour vos données
+        """
+        print("=== ENTRAÎNEMENT DU RÉSEAU OPTIMISÉ ===")
+        
+        n_classes = len(np.unique(y_train))
+        n_features = X_train.shape[1]
+        
+        print(f"Classes: {n_classes}, Features: {n_features}")
+        
+        # Architecture adaptée au nombre de classes
+        if n_classes <= 50:
+            hidden_layers = (512, 256, 128)
+            alpha = 0.0001
+            max_iter = 800
+        elif n_classes <= 100:
+            hidden_layers = (256, 128, 64)
+            alpha = 0.001
+            max_iter = 600
+        else:
+            hidden_layers = (128, 64, 32)
+            alpha = 0.01
+            max_iter = 400
+        
+        self.mlp = MLPClassifier(
+            hidden_layer_sizes=hidden_layers,
+            activation='relu',
+            solver='adam',
+            alpha=alpha,
+            batch_size=min(200, len(X_train) // 5),
+            learning_rate='adaptive',
+            learning_rate_init=0.001,
+            max_iter=max_iter,
+            random_state=42,
+            early_stopping=True,
+            validation_fraction=0.15,
+            n_iter_no_change=15,
+            verbose=True
+        )
+        
+        print("Architecture choisie:", hidden_layers)
+        print("Régularisation alpha:", alpha)
+        print("Entraînement en cours...")
+        
+        self.mlp.fit(X_train, y_train)
+        
+        print(f"Entraînement terminé après {self.mlp.n_iter_} itérations")
+        return self.mlp
+
     def extract_basic_features(self, actions_df, browser_encoded):
         """
         Extrait des caractéristiques basiques pour les réseaux de neurones
